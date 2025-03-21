@@ -61,7 +61,7 @@ resources:
   security_group:
     type: OS::Neutron::SecurityGroup
     properties:
-      name: alma_security_group
+      name: my_security_group
       rules:
         - protocol: icmp
           direction: ingress
