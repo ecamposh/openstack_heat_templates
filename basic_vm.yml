@@ -1,0 +1,98 @@
+heat_template_version: 2013-05-23
+description: Template to deploy an AlmaLinux 9 VM with a private network, private subnet, security group, router with floating IP, custom password and floating ip associated.
+
+parameters:
+  image:
+    type: string
+    default: AlmaLinux 9
+  flavor:
+    type: string
+    default: gp.0.2.6
+  network_name:
+    type: string
+    default: my_private_network
+    description: Name of the private network
+  subnet_name:
+    type: string
+    default: my_private_subnet
+    description: Name of the private subnet
+  cidr:
+    type: string
+    default: 172.16.1.0/24
+    description: CIDR block for the private subnet
+  external_network:
+    type: string
+    default: PUBLICNET
+    description: Name or ID of the external network for the floating IP
+  admin_password:
+    type: string
+    default: pa55w0rd
+    description: Password for the admin user
+  key_name:
+    type: string
+    description: Name of an existing SSH keypair to use for instances.
+
+resources:
+  private_network:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: network_name }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: { get_param: subnet_name }
+      network_id: { get_resource: private_network }
+      cidr: { get_param: cidr }
+      ip_version: 4
+
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: external_network }
+
+  router_interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet_id: { get_resource: private_subnet }
+      
+  security_group:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: alma_security_group
+      rules:
+        - protocol: icmp
+          direction: ingress
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+          direction: ingress
+
+  instance_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_resource: private_network }
+      security_groups: [{ get_resource: security_group }]
+
+  my_instance:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: instance_port }
+      user_data_format: RAW
+      user_data: |
+        #!/bin/bash
+        echo "root:pa55w0rd" | chpasswd
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    depends_on: my_instance
+    properties:
+      floating_network_id: { get_param: external_network }
+      port_id: { get_resource: instance_port }
